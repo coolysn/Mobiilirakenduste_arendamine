@@ -198,9 +198,8 @@ function setLoading(btn: HTMLElement, loading: boolean, label: string) {
 
 ## 7. Mis oli raske
 
-- **reqres.in nõuab nüüd API-võtit:** tunnimaterjali näide ei töötanud ilma registreerumiseta, seepärast valisime POST-i jaoks JSONPlaceholderi.
 - **Tõlke pikkuspiirang:** MyMemory lubab päringus umbes 500 baiti, seega tekst lõigatakse `slice(0, 450)` abil ja pikemad märkmed tõlgitakse osaliselt.
-- **Päevalimiit:** anonüümselt umbes 5000 tähemärki päevas. Ületamisel tuleb viga `responseStatus` väljas, mitte HTTP staatusega, seega tuli kontrollida mõlemat.
+- **Päevalimiit:** umbes 5000 tähemärki päevas. Ületamisel tuleb viga `responseStatus` väljas, mitte HTTP staatusega, seega tuli kontrollida mõlemat.
 - **Tõlke kvaliteet:** masintõlge eesti keelest pole alati täpne.
 - **Eesti tähed URL-is:** `õ, ä, ö, ü` ja tühikud vajavad `encodeURIComponent`-i.
 - **TypeScripti tüübiviga:** POST-i jaoks muudeti alguses `Note` liideses `id` valikuliseks (`id?: number`). See tekitas vead kohtades, kus `new Date(n.id)` näitab märkme kuupäeva. Lahendus: `id` jäeti kohustuslikuks ja POST-funktsioon võtab vastu tüübi `Omit<Note, 'id'>`.
