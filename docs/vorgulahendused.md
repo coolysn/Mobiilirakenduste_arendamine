@@ -1,41 +1,43 @@
 # Speech Notes – võrgulahenduste dokumentatsioon
 
-Kodutöö: **Võrgulahenduste koostamine**. Mobiilirakendus ühendatakse välise serveriga, et saaks saata ja vastu võtta andmeid (tekst, vajadusel pildid) REST HTTP protokolli abil.
+Kodutöö: **Võrgulahenduste koostamine**. Mobiilirakendus ühendatakse välise serveriga, et saata ja vastu võtta andmeid REST/HTTP(S) protokolli abil.
 
 ## 1. Rakenduse lühitutvustus
 
-Speech Notes on hääle põhjal märkmeid tegev mobiilirakendus (eesti keel, `et-EE`).
+Speech Notes on mobiilirakendus, mis teeb kõnest eestikeelseid märkmeid (`et-EE`).
 
 - **Tehnoloogiad:** Ionic Core (Web Components), TypeScript, Vite, Capacitor
 - **Pluginad:** `@capacitor-community/speech-recognition`, `@capacitor/preferences`, `@capacitor/filesystem`
-- **Olemasolevad funktsioonid:** märkmete rääkimine/salvestamine, kaustad, otsing, seaded, eksport/import failina, augmenteeritud reaalsus (A-Frame / WebXR)
+- **Olemasolevad funktsioonid:** märkmete dikteerimine ja salvestamine, kaustad, otsing, seaded, eksport/import failina, liitreaalsus (A-Frame / WebXR)
 
-Võrgufunktsioonid, mis kodutöö jaoks lisati:
+Kodutöö jaoks lisatud võrgufunktsioonid:
 
 | Nupp | HTTP meetod | Eesmärk |
 |---|---|---|
-| **Tõlgi** | `GET` | Tõlgib eestikeelse märkme inglise keelde |
-| **Varunda Serverisse** | `POST` | Saadab ühe märkme serverisse |
+| **Tõlgi** | `GET` | Tõlgib eestikeelse märkme inglise keelde ja kuvab tõlke ekraanil |
+| **Varunda Serverisse** | `POST` | Saadab avatud märkme serverisse |
 
-Mõlemad nupud asuvad märkme detailvaates (`#detail-view`).
+Mõlemad nupud asuvad märkme detailvaates (`#detail-view`). Päringud tehakse brauseri sisseehitatud `fetch` funktsiooniga, lisapluginat pole vaja.
 
 ## 2. Kasutatud API-d
 
 | Funktsioon | Allikas | Protokoll |
 |---|---|---|
-| Tõlge | [MyMemory Translation API](https://mymemory.translated.net/doc/spec.php) – `https://api.mymemory.translated.net/get` | REST, HTTP GET, JSON |
-| Varundus | [reqres.in](https://reqres.in) – `POST /api/users` | REST, HTTP POST, JSON |
+| Tõlge | [MyMemory Translation API](https://mymemory.translated.net/doc/spec.php): `https://api.mymemory.translated.net/get` | REST, HTTPS GET, JSON |
+| Varundus | [JSONPlaceholder](https://jsonplaceholder.typicode.com/): `POST /todos` | REST, HTTPS POST, JSON |
 
-Kodutöö nõue lubab saatmist "fakida" ainult serveri poolt – reqres.in vastab POST-päringule eduka vastusega (`id`, `createdAt`), kuid andmeid päriselt ei salvesta. See on lubatud.
+**Miks MyMemory:** tasuta, ei vaja API-võtit ega registreerumist, lubab CORS-i (päringu saab teha otse äpist) ja toetab eesti keelt.
+
+**Miks JSONPlaceholder:** tegemist on testserveriga, mis vastab POST-päringule nagu päris server (staatus `201 Created` ja uus `id`), kuid andmeid päriselt ei salvesta. Kodutöö lubab seda otseselt ("fake endpoint või reqres"). Tunnimaterjalis kasutatud reqres.in nõuab alates 2025. aastast igale päringule `x-api-key` päist, mille saamiseks peab registreeruma. JSONPlaceholder ei vaja võtit ja võtit ei pea hoidma äpi koodis.
 
 ## 3. GET – märkme tõlkimine
 
 ### Voog
 
-1. Kasutaja avab märkme (kaardil klikk → `openDetail`).
+1. Kasutaja avab märkme (klikk kaardil → `openDetail`).
 2. Vajutab **Tõlgi**.
-3. Nupp muutub laadimisindikaatoriks (`ion-spinner`) ja on ajutiselt keelatud.
-4. Rakendus saadab GET-päringu.
+3. Nupp lukustub ja näitab laadimisindikaatorit (`ion-spinner`).
+4. Rakendus saadab GET-päringu MyMemory API-le.
 5. Vastusest võetakse `responseData.translatedText` ja see kuvatakse plokis "Inglise keeles".
 6. Vea korral näidatakse punast toast-teadet "Tõlkimine ebaõnnestus".
 
@@ -61,6 +63,25 @@ async function translateNote(text: string): Promise<string> {
 }
 ```
 
+```ts
+const translateBtn = document.getElementById('detail-translate')!;
+
+translateBtn.addEventListener('click', async () => {
+  if (!openNote) return;
+  setLoading(translateBtn, true, 'Tõlgi');
+  try {
+    const translation = await translateNote(openNote.text);
+    document.getElementById('detail-translation-text')!.textContent = translation;
+    document.getElementById('detail-translation')!.classList.remove('ion-hide');
+  } catch (err) {
+    console.error('Tõlkimine ebaõnnestus', err);
+    showToast('Tõlkimine ebaõnnestus', 'danger');
+  } finally {
+    setLoading(translateBtn, false, 'Tõlgi');
+  }
+});
+```
+
 ### Näidisvastus (lühendatud)
 
 ```json
@@ -70,11 +91,11 @@ async function translateNote(text: string): Promise<string> {
 }
 ```
 
-### Veatöötlus
+### Veahaldus
 
-- `!res.ok` – võrgu-/serveriviga (HTTP staatus)
-- `responseStatus !== 200` – API enda viga (nt päevalimiit ületatud), sõnum tuleb väljalt `responseDetails`
-- `try/catch/finally` – `finally` taastab nupu alati algseisu, et see ei jääks laadima
+- `!res.ok`: võrgu- või serveriviga (HTTP staatus ei ole 2xx)
+- `responseStatus !== 200`: API enda viga (nt päevalimiit ületatud). MyMemory vastab sel juhul vahel HTTP 200-ga, seega tuleb kontrollida mõlemat.
+- `try/catch/finally`: `finally` taastab nupu alati algseisu
 - `showToast(..., 'danger')` annab kasutajale tagasisidet
 
 ## 4. POST – märkme varundamine serverisse
@@ -82,102 +103,113 @@ async function translateNote(text: string): Promise<string> {
 ### Voog
 
 1. Kasutaja avab märkme ja vajutab **Varunda Serverisse**.
-2. Rakendus saadab märkme JSON-kujul POST-päringuga.
-3. Server vastab loodud kirje `id` ja `createdAt` väärtustega.
-4. Kasutajale näidatakse toast "Märge varundatud".
+2. Nupp lukustub ja näitab laadimisindikaatorit.
+3. Rakendus saadab märkme teksti ja kausta JSON-kujul POST-päringuga.
+4. Server vastab staatusega `201 Created` ja tagastab saadetud andmed koos uue `id`-ga.
+5. Kasutajale näidatakse rohelist toast-teadet "Märkus salvestatud serverisse!", serveri vastus kirjutatakse konsooli.
+6. Vea korral näidatakse punast toast-teadet "Serverisse salvestamine ebaõnnestus".
 
 ### Päring
 
 ```
-POST https://reqres.in/api/users
-Content-Type: application/json
+POST https://jsonplaceholder.typicode.com/todos
+Content-Type: application/json; charset=UTF-8
 
-{ "name": "<kasutajanimi>", "job": "<märkme tekst>" }
+{ "name": "<märkme tekst>", "folderId": <kausta id või null> }
 ```
 
-> **NB:** reqres.in võib nõuda päisena `x-api-key` (võtme saab lehelt reqres.in). Kui see puudub, tuleb vastuseks 401/403.
+### Näidisvastus
 
-### Kood (lisamisel `src/main.ts` faili)
+```json
+{ "name": "Osta homme piima ja leiba", "folderId": null, "id": 201 }
+```
+
+### Kood (`src/main.ts`)
 
 ```ts
-async function backupNote(n: Note): Promise<{ id: string; createdAt: string }> {
-  const res = await fetch('https://reqres.in/api/users', {
+async function testPostNote(payload: Omit<Note, 'id'>) {
+  const res = await fetch('https://jsonplaceholder.typicode.com/todos', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      // 'x-api-key': '<sinu-võti>',
-    },
     body: JSON.stringify({
-      name: settings.userName || 'Nimetu',
-      job: n.text,
+      name: payload.text,
+      folderId: payload.folderId,
     }),
+    headers: {
+      'Content-type': 'application/json; charset=UTF-8',
+    },
   });
-  if (!res.ok) throw new Error(`Server vastas: ${res.status}`);
+  if (!res.ok) {
+    throw new Error(`Ei saanud märkust salvestada serverisse: ${res.status}`);
+  }
   return res.json();
 }
+```
 
+```ts
 const backupBtn = document.getElementById('detail-backup')!;
+
 backupBtn.addEventListener('click', async () => {
   if (!openNote) return;
   setLoading(backupBtn, true, 'Varunda Serverisse');
   try {
-    const r = await backupNote(openNote);
-    showToast(`Märge varundatud (id ${r.id})`);
+    const payload: Omit<Note, 'id'> = {
+      text: openNote.text,
+      folderId: openNote.folderId,
+    };
+    const data = await testPostNote(payload);
+    console.log(data);
+    showToast('Märkus salvestatud serverisse!', 'success');
   } catch (err) {
-    console.error('Varundamine ebaõnnestus', err);
-    showToast('Varundamine ebaõnnestus', 'danger');
+    console.error('Serverisse salvestamine ebaõnnestus', err);
+    showToast('Serverisse salvestamine ebaõnnestus', 'danger');
   } finally {
     setLoading(backupBtn, false, 'Varunda Serverisse');
   }
 });
 ```
 
-## 5. Pildid
+`Omit<Note, 'id'>` tähendab "märge ilma `id` väljata". Märkme `id` jääb äpi sisse (see on märkme loomise aeg), server annab vastuses oma `id`.
 
-Kodutöö nõuab tekstide **ja piltide** kuvamist. Lahendus: reqres.in `GET /api/users` tagastab kasutajaid väljaga `avatar` (pildi URL), mida saab kuvada `<img>` või `ion-avatar` elemendis (nt päises olev `header-avatar`).
+## 5. Ühised abifunktsioonid
+
+Mõlemad nupud kasutavad samu abifunktsioone:
+
+```ts
+async function showToast(message: string, color: 'success' | 'danger' = 'success') {
+  const toast = await toastController.create({ message, color, duration: 2500, position: 'bottom' });
+  await toast.present();
+}
+
+function setLoading(btn: HTMLElement, loading: boolean, label: string) {
+  btn.toggleAttribute('disabled', loading);
+  btn.innerHTML = loading ? '<ion-spinner name="dots"></ion-spinner>' : label;
+}
+```
+
+- `showToast` näitab ekraani allservas teadet: roheline õnnestumise, punane vea korral.
+- `setLoading` lukustab nupu päringu ajaks (et seda ei saaks mitu korda vajutada) ja näitab laadimisindikaatorit.
 
 ## 6. Mis oli lihtne
 
-- **`fetch` + `async/await`** töötab WebView's ilma lisapluginata, GET-päring oli paar rida.
-- **Valmis `setLoading` ja `showToast` abifunktsioonid** – laadimisseisu ja veateadete kuvamine ei vajanud uut UI-d.
-- **MyMemory ei vaja API võtit** ega registreerimist.
-- **JSON-i parsimine** – vastus on valmis objekt, `res.json()` piisas.
+- **`fetch` + `async/await`** töötab Capacitori WebView's ilma lisapluginata, GET-päring on paar rida.
+- **MyMemory ja JSONPlaceholder ei vaja API-võtit** ega registreerumist.
+- **JSON-i parsimine:** `res.json()` annab valmis objekti.
+- **Ühised `setLoading` ja `showToast` funktsioonid:** teine nupp sai kasutada esimese jaoks tehtud funktsioone.
 
 ## 7. Mis oli raske
 
-- **Tõlke pikkuspiirang:** MyMemory lubab päringus umbes 500 baiti, seega tekst lõigatakse `slice(0, 450)` abil. Pikemad märkmed tõlgitakse vaid osaliselt. Parem lahendus oleks tekst lauseteks jagada ja tõlkida tükkhaaval.
-- **Päevalimiit:** anonüümsel kasutajal on tasuta päringute limiit; ületamisel tuleb viga `responseStatus` kaudu, mitte HTTP staatusega – seega tuli kontrollida mõlemat.
-- **Tõlke kvaliteet:** masintõlge eesti keelest ei ole alati täpne (kõnetuvastuse vead kanduvad tõlkesse edasi).
-- **Võrgu olemasolu pärisseadmel:** emulaatoris/brauseris töötas, aga pärisseadmel tuli kontrollida, et telefonil on internet ja päring ei blokeeru.
-- **CORS ja HTTPS:** Capacitori WebView nõuab turvalisi (HTTPS) aadresse ning serveri vastus peab lubama päringu.
-- **Eesti tähed URL-is:** `õ, ä, ö, ü` vajavad `encodeURIComponent`-i, muidu päring katki.
-- **POST-i "fake":** reqres.in ei salvesta andmeid, seega varundust ei saa hiljem tagasi lugeda – kontrollida saab vaid vastuse `id` järgi.
+- **reqres.in nõuab nüüd API-võtit:** tunnimaterjali näide ei töötanud ilma registreerumiseta, seepärast valisime POST-i jaoks JSONPlaceholderi.
+- **Tõlke pikkuspiirang:** MyMemory lubab päringus umbes 500 baiti, seega tekst lõigatakse `slice(0, 450)` abil ja pikemad märkmed tõlgitakse osaliselt.
+- **Päevalimiit:** anonüümselt umbes 5000 tähemärki päevas. Ületamisel tuleb viga `responseStatus` väljas, mitte HTTP staatusega, seega tuli kontrollida mõlemat.
+- **Tõlke kvaliteet:** masintõlge eesti keelest pole alati täpne.
+- **Eesti tähed URL-is:** `õ, ä, ö, ü` ja tühikud vajavad `encodeURIComponent`-i.
+- **TypeScripti tüübiviga:** POST-i jaoks muudeti alguses `Note` liideses `id` valikuliseks (`id?: number`). See tekitas vead kohtades, kus `new Date(n.id)` näitab märkme kuupäeva. Lahendus: `id` jäeti kohustuslikuks ja POST-funktsioon võtab vastu tüübi `Omit<Note, 'id'>`.
+- **Puuduv pakett pärast `git pull`-i:** `@capacitor/filesystem` puudus kohalikust `node_modules` kaustast. Lahendus: `npm install`.
+- **Testserver ei salvesta:** JSONPlaceholder ei jäta andmeid alles, seega varundust ei saa hiljem tagasi lugeda. Kontrollida saab ainult vastuse staatust ja `id`-d.
 
-## 8. Testimine pärisseadmel
+## 10. Allikad
 
-| # | Test | Oodatud tulemus | Tulemus |
-|---|---|---|---|
-| 1 | Ava märge → **Tõlgi** | Kuvatakse inglise tõlge | ☐ |
-| 2 | **Tõlgi** ilma internetita (lennurežiim) | Toast "Tõlkimine ebaõnnestus", nupp taastub | ☐ |
-| 3 | **Tõlgi** väga pika märkmega (>450 märki) | Tõlgitakse esimesed 450 märki | ☐ |
-| 4 | **Varunda Serverisse** | Toast eduteatega ja `id`-ga | ☐ |
-| 5 | **Varunda** ilma internetita | Toast veateatega | ☐ |
-| 6 | Märge eesti tähtedega (õäöü) | Tõlge ja varundus toimivad korrektselt | ☐ |
-
-*Seade / Androidi versioon:* ______
-
-## 9. Käivitamine
-
-```bash
-npm install
-npm run dev            # brauseris testimine
-npm run build
-npx cap sync android
-npx cap run android    # pärisseadmel
-```
-
-## 10. Esitamine
-
-- Dokumentatsioon: see fail GitHubis (`README.md` / `DOKUMENTATSIOON.md`) või GitHub Wiki
-- Esitluse pikkus: 8–11 minutit
-- Videoklipp: valikuline
+- [MyMemory API dokumentatsioon](https://mymemory.translated.net/doc/spec.php)
+- [JSONPlaceholder](https://jsonplaceholder.typicode.com/)
+- [MDN: Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API)
+- [Ionic: Toast](https://ionicframework.com/docs/api/toast)

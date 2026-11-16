@@ -31,7 +31,7 @@ interface Folder {
 }
 
 export interface Note {
-  id?: number;
+  id: number;
   text: string;
   folderId?: number | null;
 }
@@ -544,11 +544,10 @@ async function translateNote(text: string): Promise<string> {
   return data.responseData.translatedText;
 }
 
-async function testPostNote(payload: Note) {
+async function testPostNote(payload: Omit<Note, 'id'>) {
   const res = await fetch(`https://jsonplaceholder.typicode.com/todos`, {
       method: 'POST',
       body: JSON.stringify({
-          id: payload.id,
           name: payload.text,
           folderId: payload.folderId
       }),
@@ -607,7 +606,7 @@ backupBtn.addEventListener('click', async () => {
   if (!openNote) return;
   setLoading(backupBtn, true, 'Varusta serverisse');
   try {
-    const payload: Note = {
+    const payload: Omit<Note, 'id'> = {
       text: openNote.text,
       folderId: openNote.folderId
     }
